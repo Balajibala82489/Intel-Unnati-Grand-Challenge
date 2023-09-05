@@ -1,0 +1,70 @@
+# Import necessary libraries
+import pandas as pd
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.feature_extraction.text import CountVectorizer
+
+# Load the dataset
+data = pd.read_csv('your_dataset.csv')
+
+# Data preprocessing
+# Handle missing data
+data.dropna(inplace=True)
+
+# Feature engineering
+# Extract information from Date and Time columns (you may need to adjust this based on your dataset)
+data['Date'] = pd.to_datetime(data['Date'])
+data['Month'] = data['Date'].dt.month
+data['Hour'] = data['Time'].str.split(':').str[0].astype(int)
+
+# Encode categorical variables
+label_encoder = LabelEncoder()
+data['Alert'] = label_encoder.fit_transform(data['Alert'])
+
+# Normalize numerical features
+scaler = StandardScaler()
+data[['Speed', 'Latitude', 'Longitude']] = scaler.fit_transform(data[['Speed', 'Latitude', 'Longitude']])
+
+# More advanced feature engineering - Text-based feature from Alert
+alert_texts = data['Alert'].astype(str)  # Convert to string if not already
+vectorizer = CountVectorizer()
+alert_text_features = vectorizer.fit_transform(alert_texts)
+alert_text_df = pd.DataFrame(alert_text_features.toarray(), columns=vectorizer.get_feature_names_out())
+
+# Concatenate the new features with the existing ones
+data = pd.concat([data, alert_text_df], axis=1)
+
+# Define features (X) and target (y)
+X = data[['Alert', 'Speed', 'Latitude', 'Longitude', 'Month', 'Hour'] + alert_text_df.columns.tolist()]
+y = data['Accident']  # Assuming 'Accident' is the target variable (1 for accident, 0 for no accident)
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Initialize and train the Random Forest Classifier with hyperparameter tuning
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4]
+}
+
+grid_search = GridSearchCV(RandomForestClassifier(random_state=42), param_grid, cv=5, n_jobs=-1)
+grid_search.fit(X_train, y_train)
+
+# Get the best model from hyperparameter tuning
+best_model = grid_search.best_estimator_
+
+# Make predictions on the test set
+y_pred = best_model.predict(X_test)
+
+# Evaluate the model
+accuracy = accuracy_score(y_test, y_pred)
+classification_report = classification_report(y_test, y_pred)
+
+# Print the evaluation results and best hyperparameters
+print(f"Best Hyperparameters: {grid_search.best_params_}")
+print(f"Accuracy: {accuracy}")
+print("Classification Report:\n", classification_report)
